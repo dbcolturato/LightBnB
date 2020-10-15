@@ -12,25 +12,6 @@ const pool = new Pool({
 pool.connect();
 
 
-
-// const cohortName = process.argv[2];
-// const limit = process.argv[3] || 5;
-// const values = [`%${cohortName}%`, limit];
-
-// pool.query(`
-// SELECT students.id as student_id, students.name as student, cohorts.name as cohort
-// FROM students
-// JOIN cohorts ON cohorts.id = cohort_id
-// WHERE cohorts.name LIKE $1
-// LIMIT $2;
-// `, values)
-// .then(res => {
-//   res.rows.forEach(user => {
-//     console.log(`${user.student} has an id of ${user.student_id} and was in the ${user.cohort} cohort`);
-//   })
-// })
-// .catch(err => console.error('query error', err.stack));
-
 /// Users
 
 /**
@@ -39,16 +20,6 @@ pool.connect();
  * @return {Promise<{}>} A promise to the user.
  */
 const getUserWithEmail = function (email) {
-  // let user;
-  // for (const userId in users) {
-  //   user = users[userId];
-  //   if (user.email.toLowerCase() === email.toLowerCase()) {
-  //     break;
-  //   } else {
-  //     user = null;
-  //   }
-  // }
-  // return Promise.resolve(user);
 
   return pool.query(`SELECT * FROM users WHERE email = $1;`, [email])
     .then(res => res.rowCount ? res.rows[0] : null);
@@ -61,7 +32,7 @@ exports.getUserWithEmail = getUserWithEmail;
  * @return {Promise<{}>} A promise to the user.
  */
 const getUserWithId = function (id) {
-  // return Promise.resolve(users[id]);
+ 
   return pool.query(`SELECT * FROM users WHERE id = $1;`, [id])
   .then(res => res.rowCount ? res.rows[0] : null);
 }
@@ -73,10 +44,6 @@ exports.getUserWithId = getUserWithId;
  * @return {Promise<{}>} A promise to the user.
  */
 const addUser = function (user) {
-  // const userId = Object.keys(users).length + 1;
-  // user.id = userId;
-  // users[userId] = user;
-  // return Promise.resolve(user);
 
   return pool.query(`INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING *;`, [user.name, user.email, user.password])
     .then(res => res.rows[0]);
@@ -91,7 +58,7 @@ exports.addUser = addUser;
  * @return {Promise<[{}]>} A promise to the reservations.
  */
 const getAllReservations = function (guest_id, limit = 10) {
-  // return getAllProperties(null, 2);
+  
   return pool.query(`SELECT properties.*, reservations.*, avg(rating) as average_rating
   FROM reservations
   JOIN properties ON reservations.property_id = properties.id
@@ -113,16 +80,52 @@ exports.getAllReservations = getAllReservations;
  * @param {*} limit The number of results to return.
  * @return {Promise<[{}]>}  A promise to the properties.
  */
-// const limitedProperties = {};
-// for (let i = 1; i <= limit; i++) {
-//   limitedProperties[i] = properties[i];
-// }
-// return Promise.resolve(limitedProperties);
-const getAllProperties = function (options, limit = 10) {
 
-  return pool.query(`SELECT * FROM properties LIMIT $1;`, [limit])
-    .then(res => res.rows)
-    .catch(err => console.error('query error', err.stack));
+const getAllProperties = function (options, limit) {
+
+  const queryParams = [];
+  let queryString = `
+  SELECT properties.*, avg(property_reviews.rating) as average_rating
+  FROM properties
+  JOIN property_reviews ON properties.id = property_id
+  `;
+
+  if (options.city) {
+    queryParams.push(`%${options.city}%`);
+    queryString += `WHERE city LIKE $${queryParams.length} `;
+  }
+  if (options.owner_id) {
+    queryParams.push(`${options.owner_id}`);
+    queryString += `AND owner_id = $${queryParams.length} `;
+  }
+
+  if (options.minimum_price_per_night) {
+    queryParams.push(`${options.minimum_price_per_night}`);
+    queryString += `AND (cost_per_night/100) >= $${queryParams.length} `;
+  }
+
+  if (options.maximum_price_per_night) {
+    queryParams.push(`${options.maximum_price_per_night}`);
+    queryString += `AND (cost_per_night/100) <= $${queryParams.length} `;
+  }
+
+  if (options.minimum_rating) {
+    queryParams.push(`${options.minimum_rating}`);
+    queryString += `AND rating >= $${queryParams.length} `;
+  }
+
+
+  queryParams.push(limit);
+  queryString += `
+  GROUP BY properties.id
+  ORDER BY cost_per_night
+  LIMIT $${queryParams.length};
+  `;
+  console.log(queryString, queryParams);
+
+  return pool.query(queryString, queryParams)
+  .then(res => res.rows);
+    
 }
 exports.getAllProperties = getAllProperties;
 
